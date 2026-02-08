@@ -601,7 +601,7 @@ void invader_PlayGame() {
             if (general2.appearCountdown == 0) {
 
                 player.status = Status::Active;
-                arduboy.frameCount = 5;
+                arduboy.setFrameCount(5);
 
             }
 

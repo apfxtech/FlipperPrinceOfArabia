@@ -21,5 +21,13 @@ class Arduboy2Ext : public Arduboy2Base {
     void clearButtonState();
     void resetFrameCount();
     uint8_t randomLFSR(uint8_t min, uint8_t max);
-        
+
+  private:
+    uint8_t sampleButtonsMask() const;
+    uint8_t getSampledButtons() const;
+
+    mutable uint32_t sampled_frame = UINT32_MAX;
+    mutable uint8_t previous_buttons = 0;
+    mutable uint8_t current_buttons = 0;
+    mutable int32_t frame_offset = 0;
 };

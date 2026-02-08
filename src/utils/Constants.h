@@ -1432,6 +1432,8 @@ constexpr uint16_t Sword_Step_3_End                              = Stance::Sword
 
 /* ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
 /*                                                               01     02     03     04     05     06     07     08     09     10     11     12     13     14     15     16     17     18     19     20 */
+#undef SWORD_STEP_SEQ
+#undef SWORD_STEP_OFFSETS
 #define SWORD_STEP_SEQ                                           183,   182,   181,   
 #define SWORD_STEP_OFFSETS                                       0,0,   -1,0,  -3,0,  
 constexpr uint16_t Sword_Step_Back_1_Start                       = Stance::Sword_Step_3_End + 1;

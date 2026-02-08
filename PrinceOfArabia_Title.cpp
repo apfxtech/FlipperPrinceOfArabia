@@ -469,7 +469,7 @@ void title() {
 
                         level.loadItems(0, prince);
                         cookie.setMode(TitleScreenMode::CutScene_7_PlayGame);
-                        arduboy.frameCount = 5;
+                        arduboy.setFrameCount(5);
                         arduboy.setFrameRate(60); 
 
                     }
