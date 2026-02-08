@@ -1,4 +1,4 @@
-# Prince of Arabia
+# FlipperPrinceOfArabia
 
 Inspired by a timeless classic, PPOT presents 'Prince of Arabia'!
 Escape the dungeons and free the princess!
@@ -79,4 +79,5 @@ Development: @filmote, @MrBlinky (/Mr.Blinky), @ace-dent (/acedent)
 Graphics: /clintonium-119, @vampirics  
 Music: @ajsaucier (/raspberrybrain)  
 
-# FlipperPrinceOfArabia
+# Original
+**Press-Play-On-Tape** [Prince of Arabia](https://github.com/Press-Play-On-Tape/PrinceOfArabia.git)
