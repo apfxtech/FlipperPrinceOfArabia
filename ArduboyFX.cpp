@@ -606,6 +606,54 @@ void FX::writeSaveU16BE_(uint16_t off, uint16_t v) {
     (void)fileWriteAt_(save_, off, b, 2);
 }
 
+bool FX::readDataAt_(uint32_t address, uint8_t* buffer, size_t length) {
+    if(!buffer || length == 0) return true;
+
+    uint32_t abs = absDataOffset_(address);
+    size_t done = 0;
+
+    while(done < length) {
+        uint8_t page_i = 0xFF;
+        if(!dataEnsurePageIndex_(abs, &page_i)) return false;
+
+        const uint32_t base = cache_base_[page_i];
+        const uint16_t len = cache_len_[page_i];
+        if(abs < base) return false;
+
+        const uint32_t off = abs - base;
+        if(off >= len) return false;
+
+        const size_t available = (size_t)len - (size_t)off;
+        const size_t chunk = fx_min_sz(length - done, available);
+
+        const uint8_t* src = cache_mem_ + ((size_t)page_i * (size_t)page_size_) + (size_t)off;
+        memcpy(buffer + done, src, chunk);
+
+        done += chunk;
+        abs += (uint32_t)chunk;
+    }
+
+    return true;
+}
+
+const uint8_t* FX::dataPtrAt_(uint32_t address, size_t length) {
+    if(length == 0) return nullptr;
+
+    const uint32_t abs = absDataOffset_(address);
+    uint8_t page_i = 0xFF;
+    if(!dataEnsurePageIndex_(abs, &page_i)) return nullptr;
+
+    const uint32_t base = cache_base_[page_i];
+    const uint16_t len = cache_len_[page_i];
+    if(abs < base) return nullptr;
+
+    const uint32_t off = abs - base;
+    if(off >= len) return nullptr;
+    if((size_t)len - (size_t)off < length) return nullptr;
+
+    return cache_mem_ + ((size_t)page_i * (size_t)page_size_) + (size_t)off;
+}
+
 void FX::eraseSaveBlock(uint16_t) {
     if(!save_opened_ || !save_) return;
     (void)storage_file_seek(save_, 0, true);
@@ -704,7 +752,7 @@ bool FX::drawFrame() {
     bool last_frame = false;
 
     for(uint16_t n = 0; n < kMaxRecordsPerFrame; n++) {
-        readDataBytes(cursor, rec, sizeof(rec));
+        if(!readDataAt_(cursor, rec, sizeof(rec))) return false;
 
         const int16_t x = (int16_t)fx_be16(&rec[0]);
         const int16_t y = (int16_t)fx_be16(&rec[2]);
@@ -743,7 +791,7 @@ bool FX::drawFrame(uint24_t frame_addr) {
 
 void FX::drawBitmap(int16_t x, int16_t y, uint24_t bitmap_addr, uint8_t frame, uint8_t mode) {
     uint8_t wh[4] = {0, 0, 0, 0};
-    readDataBytes(bitmap_addr, wh, sizeof(wh));
+    if(!readDataAt_(bitmap_addr, wh, sizeof(wh))) return;
     const uint16_t w = fx_be16(&wh[0]);
     const uint16_t h = fx_be16(&wh[2]);
     if(w == 0 || h == 0 || w > 128 || h > 200) return;
@@ -761,18 +809,24 @@ void FX::drawBitmap(int16_t x, int16_t y, uint24_t bitmap_addr, uint8_t frame, u
     if(base_addr > UINT32_MAX - frame_off) return;
     const uint32_t addr = base_addr + frame_off;
 
-    static uint8_t scratch[6144];
-    const size_t total = (size_t)bytes_per_frame + 2u;
-    if(total > sizeof(scratch)) return;
+    const uint8_t* data_ptr = dataPtrAt_(addr, (size_t)bytes_per_frame);
+    if(data_ptr) {
+        if(masked) {
+            arduboy.drawPlusMaskData(x, y, data_ptr, (uint8_t)w, (uint8_t)h);
+        } else {
+            arduboy.drawSolidBitmapData(x, y, data_ptr, (uint8_t)w, (uint8_t)h);
+        }
+        return;
+    }
 
-    scratch[0] = (uint8_t)w;
-    scratch[1] = (uint8_t)h;
-    readDataBytes(addr, scratch + 2u, bytes_per_frame);
+    static uint8_t scratch[6400];
+    if((size_t)bytes_per_frame > sizeof(scratch)) return;
+    if(!readDataAt_(addr, scratch, bytes_per_frame)) return;
 
     if(masked) {
-        arduboy.drawPlusMask(x, y, scratch, 0);
+        arduboy.drawPlusMaskData(x, y, scratch, (uint8_t)w, (uint8_t)h);
     } else {
-        arduboy.drawSolidBitmapFrame(x, y, scratch, 0);
+        arduboy.drawSolidBitmapData(x, y, scratch, (uint8_t)w, (uint8_t)h);
     }
 }
 

@@ -276,6 +276,11 @@ public:
         blitOverwrite_(x, y, data, w, h);
     }
 
+    void drawSolidBitmapData(int16_t x, int16_t y, const uint8_t* data, uint8_t w, uint8_t h) {
+        if(!data || !sBuffer) return;
+        blitOverwrite_(x, y, data, (int16_t)w, (int16_t)h);
+    }
+
     void drawPlusMask(int16_t x, int16_t y, const uint8_t* plusmask, uint8_t frame) {
         if(!plusmask || !sBuffer) return;
         const int16_t w = (int16_t)pgm_read_byte(plusmask + 0);
@@ -284,6 +289,11 @@ public:
         const uint16_t frame_size = (uint16_t)w * (uint16_t)pages;
         const uint8_t* data = plusmask + 2 + (uint32_t)frame * (uint32_t)frame_size * 2u;
         blitPlusMask_(x, y, data, w, h);
+    }
+
+    void drawPlusMaskData(int16_t x, int16_t y, const uint8_t* data, uint8_t w, uint8_t h) {
+        if(!data || !sBuffer) return;
+        blitPlusMask_(x, y, data, (int16_t)w, (int16_t)h);
     }
 
     void drawCircle(int16_t x0, int16_t y0, int16_t r, uint8_t color) {

@@ -180,6 +180,8 @@ private:
 
     static uint16_t readSaveU16BE_(uint16_t off);
     static void writeSaveU16BE_(uint16_t off, uint16_t v);
+    static bool readDataAt_(uint32_t address, uint8_t* buffer, size_t length);
+    static const uint8_t* dataPtrAt_(uint32_t address, size_t length);
 };
 
 constexpr uint8_t dbmNormal = FX::dbmNormal;
