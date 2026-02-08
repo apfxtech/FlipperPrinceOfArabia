@@ -13,7 +13,9 @@ void setTitleFrame(TitleFrameIndex index) {
         uint8_t idx = 2 * static_cast<uint8_t>(index);
     #endif
 
-    FX::seekDataArray(TitleFrameIndexTable, idx, 0, sizeof(uint24_t) + sizeof(uint8_t));
+    // TitleFrameIndexTable layout is fixed: uint24_t addr (3 bytes) + uint8_t frame_count.
+    // Do not use sizeof(uint24_t) here because in this port uint24_t is represented as uint32_t.
+    FX::seekDataArray(TitleFrameIndexTable, idx, 0, 4);
     uint32_t data = FX::readPendingLastUInt32();
     FX::setFrame((uint24_t)(data >> 8), (uint8_t)data);
 

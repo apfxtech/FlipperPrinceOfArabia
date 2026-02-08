@@ -691,8 +691,10 @@ void FX::setFrame(uint24_t frame_addr, uint8_t frame_count) {
 }
 
 bool FX::drawFrame() {
-    if(frame_count_ == 0) return false;
-    if(frame_idx_ >= frame_count_) return false;
+    // In fxdata frame tables, frame_count can be 0.
+    // Treat 0 as "stream until *_last marker" instead of "no frames".
+    const bool bounded = (frame_count_ != 0);
+    if(bounded && frame_idx_ >= frame_count_) return false;
 
     // Frame script record layout in fxdata is:
     // int16_be x, int16_be y, uint24_be image, uint8 frame, uint8 mode
@@ -720,15 +722,15 @@ bool FX::drawFrame() {
             frame_addr_ = cursor;
             frame_idx_++;
             if(last_frame) {
-                frame_idx_ = frame_count_;
+                if(bounded) frame_idx_ = frame_count_;
                 return false;
             }
-            return frame_idx_ < frame_count_;
+            return bounded ? (frame_idx_ < frame_count_) : true;
         }
     }
 
     // Corrupt frame data fallback: stop animation safely.
-    frame_idx_ = frame_count_;
+    if(bounded) frame_idx_ = frame_count_;
     return false;
 }
 
