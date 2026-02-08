@@ -28,7 +28,6 @@ public:
 
     static uint16_t programDataPage;
     static uint16_t programSavePage;
-
     static void setCacheConfig(uint32_t page_size, uint8_t pages);
     static void setPaths(const char* data_bin_path, const char* save_path);
 
@@ -102,37 +101,31 @@ private:
     enum class Domain : uint8_t { Data, Save };
 
     static constexpr uint16_t kSaveBlockSize = 4096;
-    static constexpr size_t   kPathMax = 64;
+    static constexpr size_t kPathMax = 128;
+    static constexpr const char* kDataPath = APP_ASSETS_PATH("fxdata.bin");
+    static constexpr const char* kSavePath = APP_DATA_PATH("fxsave.bin");
 
     static Storage* storage_;
     static File*    data_;
     static File*    save_;
     static bool     data_opened_;
     static bool     save_opened_;
-
-    static char data_path_[kPathMax];
-    static char save_path_[kPathMax];
+    static char     data_path_[kPathMax];
+    static char     save_path_[kPathMax];
 
     static Domain   domain_;
     static uint32_t cur_abs_;
-
     static uint32_t page_size_;
     static uint8_t  cache_pages_;
-
-    static uint8_t*  cache_mem_;
+    static uint8_t* cache_mem_;
     static uint32_t* cache_base_;
     static uint16_t* cache_len_;
     static uint32_t* cache_age_;
-    static uint8_t*  cache_valid_;
-    static uint32_t  cache_age_ctr_;
-
+    static uint8_t* cache_valid_;
+    static uint32_t cache_age_ctr_;
     static uint8_t  last_hit_;
     static uint32_t last_base_;
     static uint8_t  seq_score_;
-
-    static uint32_t data_file_pos_;
-    static bool     data_file_pos_valid_;
-
     static uint8_t  stream_page_i_;
     static uint32_t stream_base_;
     static uint16_t stream_len_;
@@ -140,16 +133,31 @@ private:
     static uint8_t* stream_ptr_;
     static bool     stream_valid_;
 
+    static uint32_t data_file_pos_;
+    static bool     data_file_pos_valid_;
+
     static bool    pending_valid_;
     static uint8_t pending_byte_;
+    static uint8_t data_read_buf_[256];
+    static uint32_t data_read_buf_base_;
+    static uint16_t data_read_buf_len_;
+    static bool data_read_buf_valid_;
 
     static uint24_t frame_addr_;
     static uint24_t frame_base_addr_;
     static uint8_t frame_count_;
     static uint8_t frame_idx_;
 
-    static uint32_t alignDown_(uint32_t v, uint32_t a);
-    static uint32_t alignUp_(uint32_t v, uint32_t a);
+    struct BitmapMetaCacheEntry {
+        uint24_t addr;
+        uint16_t w;
+        uint16_t h;
+        uint16_t pages;
+        uint8_t valid;
+    };
+    static constexpr uint8_t kBitmapMetaCacheSize = 16;
+    static BitmapMetaCacheEntry bitmap_meta_cache_[kBitmapMetaCacheSize];
+    static uint8_t bitmap_meta_rr_;
 
     static bool ensureStorage_();
     static bool openData_();
@@ -157,23 +165,24 @@ private:
 
     static bool fileFill_(File* f, uint8_t value, size_t len);
     static bool fileReadAt_(File* f, uint32_t off, void* out, size_t len);
+    static size_t fileReadSomeAt_(File* f, uint32_t off, void* out, size_t len);
     static bool fileWriteAt_(File* f, uint32_t off, const void* in, size_t len);
 
     static void freeCaches_();
     static bool allocCaches_();
-
-    static uint32_t absDataOffset_(uint32_t address);
-
+    static uint32_t alignDown_(uint32_t v, uint32_t a);
+    static uint32_t alignUp_(uint32_t v, uint32_t a);
     static void streamReset_();
-    static bool streamEnsureAbs_(uint32_t abs_off);
-    static bool streamEnsureAbsFast_(uint32_t abs_off);
-    static uint8_t streamReadU8Fast_();
-
     static bool dataPageHas_(uint32_t base);
     static uint8_t dataPickVictim_();
     static bool dataLoadPage_(uint32_t base, uint8_t page_i);
     static void dataMaybePrefetch_(uint32_t base);
     static bool dataEnsurePageIndex_(uint32_t abs_off, uint8_t* out_index);
+    static bool streamEnsureAbs_(uint32_t abs_off);
+    static bool streamEnsureAbsFast_(uint32_t abs_off);
+    static uint8_t streamReadU8Fast_();
+
+    static uint32_t absDataOffset_(uint32_t address);
 
     static void primePendingData_();
     static void primePendingSave_();
@@ -182,6 +191,10 @@ private:
     static void writeSaveU16BE_(uint16_t off, uint16_t v);
     static bool readDataAt_(uint32_t address, uint8_t* buffer, size_t length);
     static const uint8_t* dataPtrAt_(uint32_t address, size_t length);
+    static bool getBitmapMeta_(uint24_t bitmap_addr, uint16_t* out_w, uint16_t* out_h, uint16_t* out_pages);
+    static void dataReadBufInvalidate_();
+    static size_t dataReadSpanAt_(uint32_t abs, uint8_t* out, size_t len);
+    static bool dataReadByteAt_(uint32_t abs, uint8_t* out);
 };
 
 constexpr uint8_t dbmNormal = FX::dbmNormal;

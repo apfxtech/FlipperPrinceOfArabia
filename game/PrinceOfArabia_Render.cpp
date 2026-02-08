@@ -1,5 +1,5 @@
-#include <Arduboy2.h>   
-#include <ArduboyFX.h>  
+#include <lib/Arduboy2.h>   
+#include <lib/ArduboyFX.h>  
 
 #include "src/utils/Constants.h"
 #include "src/utils/Stack.h"

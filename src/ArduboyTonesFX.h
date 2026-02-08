@@ -2,8 +2,8 @@
 
 #include <stdint.h>
 
-#include <ArduboyFX.h>
-#include <ArduboyTones.h>
+#include <lib/ArduboyFX.h>
+#include <lib/ArduboyTones.h>
 
 class ArduboyTonesFX {
 public:

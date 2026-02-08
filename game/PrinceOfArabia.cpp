@@ -1,6 +1,6 @@
 #include "src/utils/Arduboy2Ext.h"
 #include "src/ArduboyTonesFX.h"
-#include <ArduboyFX.h>  
+#include <lib/ArduboyFX.h>  
 
 #include "src/utils/Constants.h"
 #include "src/utils/Enums.h"

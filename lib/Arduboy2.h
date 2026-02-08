@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Arduino.h"
-#include "ArduboyTones.h"
+#include "lib/Arduino.h"
+#include "lib/ArduboyTones.h"
 #include "EEPROM.h"
 #include <stdint.h>
 #include <stddef.h>
@@ -158,10 +158,10 @@ public:
             bit = INPUT_RIGHT;
             break;
         case InputKeyOk:
-            bit = INPUT_B;
+            bit = INPUT_A;
             break;
         case InputKeyBack:
-            bit = INPUT_A;
+            bit = INPUT_B;
             break;
         default:
             return;

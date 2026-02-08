@@ -746,6 +746,10 @@ bool FX::drawFrame() {
     static constexpr uint8_t kRecordSize = 9;
     static constexpr uint16_t kMaxRecordsPerFrame = 512;
 
+    // FX frame scripts represent full logical frames.
+    // Clear first to prevent previous frame residue.
+    arduboy.clear();
+
     const uint32_t current_frame_addr = frame_addr_;
     uint32_t cursor = current_frame_addr;
     uint8_t rec[kRecordSize];
@@ -809,24 +813,55 @@ void FX::drawBitmap(int16_t x, int16_t y, uint24_t bitmap_addr, uint8_t frame, u
     if(base_addr > UINT32_MAX - frame_off) return;
     const uint32_t addr = base_addr + frame_off;
 
-    const uint8_t* data_ptr = dataPtrAt_(addr, (size_t)bytes_per_frame);
-    if(data_ptr) {
-        if(masked) {
-            arduboy.drawPlusMaskData(x, y, data_ptr, (uint8_t)w, (uint8_t)h);
-        } else {
-            arduboy.drawSolidBitmapData(x, y, data_ptr, (uint8_t)w, (uint8_t)h);
+    const uint8_t* data_ptr = nullptr;
+
+    // Repeat cache by full object identity (addr + length), independent of object size class.
+    struct RepeatEntry {
+        uint32_t addr;
+        uint16_t len;
+        uint8_t age;
+        uint8_t valid;
+        uint8_t data[6400];
+    };
+    static RepeatEntry repeat_cache[2] = {};
+    static uint8_t repeat_age = 1;
+
+    for(uint8_t i = 0; i < 2; i++) {
+        RepeatEntry& e = repeat_cache[i];
+        if(e.valid && e.addr == addr && e.len == bytes_per_frame) {
+            e.age = repeat_age++;
+            data_ptr = e.data;
+            break;
         }
-        return;
     }
 
-    static uint8_t scratch[6400];
-    if((size_t)bytes_per_frame > sizeof(scratch)) return;
-    if(!readDataAt_(addr, scratch, bytes_per_frame)) return;
+    if(!data_ptr) {
+        // Fastest path when bitmap frame is physically contiguous in current page cache.
+        data_ptr = dataPtrAt_(addr, (size_t)bytes_per_frame);
+    }
+
+    if(!data_ptr) {
+        int8_t victim = 0;
+        if(repeat_cache[0].valid && !repeat_cache[1].valid) {
+            victim = 1;
+        } else if(repeat_cache[0].valid && repeat_cache[1].valid) {
+            victim = (repeat_cache[0].age <= repeat_cache[1].age) ? 0 : 1;
+        }
+
+        RepeatEntry& e = repeat_cache[(uint8_t)victim];
+        if((size_t)bytes_per_frame > sizeof(e.data)) return;
+        if(!readDataAt_(addr, e.data, bytes_per_frame)) return;
+        e.addr = addr;
+        e.len = (uint16_t)bytes_per_frame;
+        e.age = repeat_age++;
+        e.valid = 1;
+        data_ptr = e.data;
+    }
 
     if(masked) {
-        arduboy.drawPlusMaskData(x, y, scratch, (uint8_t)w, (uint8_t)h);
+        arduboy.drawPlusMaskData(x, y, data_ptr, (uint8_t)w, (uint8_t)h);
     } else {
-        arduboy.drawSolidBitmapData(x, y, scratch, (uint8_t)w, (uint8_t)h);
+        arduboy.drawSolidBitmapData(x, y, data_ptr, (uint8_t)w, (uint8_t)h);
     }
 }
 

@@ -1,6 +1,6 @@
-#include <Arduino.h>
-#include <Sprites.h>
-#include <Print.h>
+#include <lib/Arduino.h>
+#include <lib/Sprites.h>
+#include <lib/Print.h>
 #include "Font3x5.h"
 
 #define USE_LOWER_CASE

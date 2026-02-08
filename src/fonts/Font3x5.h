@@ -1,7 +1,7 @@
 #pragma once
 
-#include <Arduino.h>
-#include <Print.h>
+#include <lib/Arduino.h>
+#include <lib/Print.h>
 
 class Font3x5 : public Print {
     

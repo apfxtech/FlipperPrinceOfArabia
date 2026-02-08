@@ -84,12 +84,12 @@ void renderTorches(uint8_t x1, uint8_t x2, uint8_t y);
 void setup();
 void loop();
 
-#include "PrinceOfArabia.cpp"
-#include "PrinceOfArabia_Game.cpp"
-#include "PrinceOfArabia_Render.cpp"
-#include "PrinceOfArabia_SplashScreen.cpp"
-#include "PrinceOfArabia_Title.cpp"
-#include "PrinceOfArabia_Utils.cpp"
+#include "game/PrinceOfArabia.cpp"
+#include "game/PrinceOfArabia_Game.cpp"
+#include "game/PrinceOfArabia_Render.cpp"
+#include "game/PrinceOfArabia_SplashScreen.cpp"
+#include "game/PrinceOfArabia_Title.cpp"
+#include "game/PrinceOfArabia_Utils.cpp"
 
 typedef struct {
     uint8_t screen_buffer[FB_SIZE];
@@ -179,7 +179,6 @@ extern "C" int32_t arduboy_app(void* p) {
         &g_state->exit_requested);
     Sprites::setArduboy(&arduboy);
 
-    FX::setPaths(APP_ASSETS_PATH("fxdata.bin"), APP_DATA_PATH("fxsave.bin"));
     EEPROM.begin(APP_DATA_PATH("eeprom.bin"));
 
     g_state->gui = (Gui*)furi_record_open(RECORD_GUI);

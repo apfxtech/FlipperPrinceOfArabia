@@ -1,4 +1,4 @@
-#include <Arduboy2.h>
+#include <lib/Arduboy2.h>
 #include "PrinceOfArabia_CutScene.h"
 
 
@@ -340,7 +340,6 @@ void title() {
                 setTitleFrame((TitleFrameIndex)((uint8_t)TitleFrameIndex::Intro_Last_PoP_Frame_NC + frameIndex));
 
                 if (justPressed) {
-                    
                     cookie.setMode(TitleScreenMode::Main);
                     setTitleFrame((TitleFrameIndex)((uint8_t)TitleFrameIndex::Main_PoP_Frame_NC + frameIndex));
 
