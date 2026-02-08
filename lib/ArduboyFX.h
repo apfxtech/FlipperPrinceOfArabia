@@ -144,6 +144,7 @@ private:
     static uint8_t pending_byte_;
 
     static uint24_t frame_addr_;
+    static uint24_t frame_base_addr_;
     static uint8_t frame_count_;
     static uint8_t frame_idx_;
 

@@ -48,6 +48,7 @@ bool    FX::pending_valid_ = false;
 uint8_t FX::pending_byte_ = 0xFF;
 
 uint24_t FX::frame_addr_ = 0;
+uint24_t FX::frame_base_addr_ = 0;
 uint8_t FX::frame_count_ = 0;
 uint8_t FX::frame_idx_ = 0;
 
@@ -685,24 +686,22 @@ void FX::writeSavePage(uint16_t page, const uint8_t* buffer) {
 }
 
 void FX::setFrame(uint24_t frame_addr, uint8_t frame_count) {
+    frame_base_addr_ = frame_addr;
     frame_addr_ = frame_addr;
     frame_count_ = frame_count;
     frame_idx_ = 0;
 }
 
 bool FX::drawFrame() {
-    // In fxdata frame tables, frame_count can be 0.
-    // Treat 0 as "stream until *_last marker" instead of "no frames".
-    const bool bounded = (frame_count_ != 0);
-    if(bounded && frame_idx_ >= frame_count_) return false;
-
-    // Frame script record layout in fxdata is:
+    // Frame script record layout in fxdata:
     // int16_be x, int16_be y, uint24_be image, uint8 frame, uint8 mode
     static constexpr uint8_t kRecordSize = 9;
     static constexpr uint16_t kMaxRecordsPerFrame = 512;
 
-    uint32_t cursor = frame_addr_;
+    const uint32_t current_frame_addr = frame_addr_;
+    uint32_t cursor = current_frame_addr;
     uint8_t rec[kRecordSize];
+    bool last_frame = false;
 
     for(uint16_t n = 0; n < kMaxRecordsPerFrame; n++) {
         readDataBytes(cursor, rec, sizeof(rec));
@@ -717,25 +716,28 @@ bool FX::drawFrame() {
         cursor += kRecordSize;
 
         const bool end_of_frame = (mode & 0x40u) != 0;
-        const bool last_frame = (mode & 0x80u) != 0;
+        last_frame = (mode & 0x80u) != 0;
         if(end_of_frame || last_frame) {
-            frame_addr_ = cursor;
-            frame_idx_++;
-            if(last_frame) {
-                if(bounded) frame_idx_ = frame_count_;
-                return false;
-            }
-            return bounded ? (frame_idx_ < frame_count_) : true;
+            break;
         }
     }
 
-    // Corrupt frame data fallback: stop animation safely.
-    if(bounded) frame_idx_ = frame_count_;
-    return false;
+    // `frame_count_` here is a frame hold/delay parameter from TitleFrameIndexTable.
+    // Each logical frame is shown for (frame_count_ + 1) ticks.
+    if(frame_idx_ >= frame_count_) {
+        frame_idx_ = 0;
+        frame_addr_ = last_frame ? frame_base_addr_ : (uint24_t)cursor;
+    } else {
+        frame_idx_++;
+        frame_addr_ = (uint24_t)current_frame_addr;
+    }
+
+    // Signal completion when a *_last frame is reached.
+    return !last_frame;
 }
 
 bool FX::drawFrame(uint24_t frame_addr) {
-    setFrame(frame_addr, 1);
+    setFrame(frame_addr, 0);
     return drawFrame();
 }
 
