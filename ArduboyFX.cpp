@@ -533,87 +533,25 @@ uint32_t FX::readPendingLastUInt32() {
 
 void FX::readBytes(uint8_t* buffer, size_t length) {
     if(!buffer || length == 0) return;
-    
-    if(domain_ == Domain::Save) {
-        for(size_t i = 0; i < length; i++) buffer[i] = readPendingUInt8();
-        return;
-    }
-    
-    if(!pending_valid_) {
-        primePendingData_();
-    }
-    
-    size_t remain = length;
-    size_t offset = 0;
-    
-    while(remain > 0) {
-        if(!streamEnsureAbsFast_(cur_abs_ - 1)) {
-            for(size_t i = offset; i < length; i++) buffer[i] = readPendingUInt8();
-            return;
-        }
-        
-        uint32_t page_offset = (cur_abs_ - 1) - stream_base_;
-        size_t available = stream_len_ - page_offset;
-        size_t chunk = (remain < available) ? remain : available;
-        
-        memcpy(buffer + offset, stream_ptr_ + page_offset, chunk);
-        
-        offset += chunk;
-        remain -= chunk;
-        cur_abs_ += chunk;
-        stream_abs_ = cur_abs_;
-    }
-    
-    if(remain == 0 && cur_abs_ < 0xFFFFFFFFu) {
-        if(streamEnsureAbsFast_(cur_abs_)) {
-            pending_byte_ = streamReadU8Fast_();
-            pending_valid_ = true;
-            cur_abs_++;
-        } else {
-            pending_byte_ = 0xFF;
-            pending_valid_ = true;
-            cur_abs_++;
-        }
+
+    // Keep semantics identical to pending-byte stream operations:
+    // after reading N bytes, pending points to the next byte.
+    for(size_t i = 0; i < length; i++) {
+        buffer[i] = readPendingUInt8();
     }
 }
 
 void FX::readBytesEnd(uint8_t* buffer, size_t length) {
     if(!buffer || length == 0) return;
-    if(length == 1) { buffer[0] = readEnd(); return; }
-    
-    if(domain_ == Domain::Save) {
-        for(size_t i = 0; i < length - 1; i++) buffer[i] = readPendingUInt8();
-        buffer[length - 1] = readEnd();
+    if(length == 1) {
+        buffer[0] = readEnd();
         return;
     }
-    
-    if(!pending_valid_) {
-        primePendingData_();
+
+    for(size_t i = 0; i < length - 1; i++) {
+        buffer[i] = readPendingUInt8();
     }
-    
-    size_t remain = length;
-    size_t offset = 0;
-    
-    while(remain > 0) {
-        if(!streamEnsureAbsFast_(cur_abs_ - 1)) {
-            for(size_t i = offset; i < length - 1; i++) buffer[i] = readPendingUInt8();
-            buffer[length - 1] = readEnd();
-            return;
-        }
-        
-        uint32_t page_offset = (cur_abs_ - 1) - stream_base_;
-        size_t available = stream_len_ - page_offset;
-        size_t chunk = (remain < available) ? remain : available;
-        
-        memcpy(buffer + offset, stream_ptr_ + page_offset, chunk);
-        
-        offset += chunk;
-        remain -= chunk;
-        cur_abs_ += chunk;
-        stream_abs_ = cur_abs_;
-    }
-    
-    pending_valid_ = false;
+    buffer[length - 1] = readEnd();
 }
 
 void FX::readDataBytes(uint32_t address, uint8_t* buffer, size_t length) {
