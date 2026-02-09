@@ -23,8 +23,8 @@ char FX::save_path_[FX::kPathMax] = APP_DATA_PATH("fxsave.bin");
 FX::Domain FX::domain_ = FX::Domain::Data;
 uint32_t   FX::cur_abs_ = 0;
 
-uint32_t FX::page_size_ = 4096;
-uint8_t  FX::cache_pages_ = 10;
+uint32_t FX::page_size_ = 1024;
+uint8_t  FX::cache_pages_ = 38;
 
 uint8_t*  FX::cache_mem_ = nullptr;
 uint32_t* FX::cache_base_ = nullptr;

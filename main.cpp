@@ -105,26 +105,44 @@ typedef struct {
 
     volatile uint8_t input_state;
     volatile bool exit_requested;
+    volatile bool back_long_requested;
 } FlipperState;
 
 typedef struct {
     volatile bool* exit_requested;
+    volatile bool* back_long_requested;
     Arduboy2Base::InputContext* input_ctx;
 } InputBridge;
 
 static FlipperState* g_state = NULL;
 static InputBridge g_input_bridge = {};
 
+static bool can_exit_from_current_state() {
+    switch(gamePlay.gameState) {
+    case GameState::Game_Init:
+    case GameState::Game:
+    case GameState::Game_StartLevel:
+        return false;
+    default:
+        return true;
+    }
+}
+
 static void input_events_callback(const void* value, void* ctx) {
     if(!value || !ctx) return;
 
     const InputEvent* event = (const InputEvent*)value;
     InputBridge* bridge = (InputBridge*)ctx;
+    if(!bridge || !bridge->input_ctx) return;
 
     if(event->key == InputKeyBack && event->type == InputTypeLong) {
-        if(bridge->exit_requested) {
-            *bridge->exit_requested = true;
+        if(bridge->back_long_requested) {
+            *bridge->back_long_requested = true;
         }
+        // Keep Back behaving as in-game B even on long press.
+        InputEvent tmp = *event;
+        tmp.type = InputTypeRepeat;
+        Arduboy2Base::FlipperInputCallback(&tmp, bridge->input_ctx);
         return;
     }
 
@@ -168,6 +186,7 @@ extern "C" int32_t arduboy_app(void* p) {
     }
 
     g_state->exit_requested = false;
+    g_state->back_long_requested = false;
     g_state->input_state = 0;
     memset(g_state->screen_buffer, 0x00, FB_SIZE);
     memset(g_state->front_buffer, 0x00, FB_SIZE);
@@ -187,6 +206,7 @@ extern "C" int32_t arduboy_app(void* p) {
 
     g_state->input_events = (FuriPubSub*)furi_record_open(RECORD_INPUT_EVENTS);
     g_input_bridge.exit_requested = &g_state->exit_requested;
+    g_input_bridge.back_long_requested = &g_state->back_long_requested;
     g_input_bridge.input_ctx = arduboy.inputContext();
     g_state->input_sub =
         furi_pubsub_subscribe(g_state->input_events, input_events_callback, &g_input_bridge);
@@ -195,6 +215,10 @@ extern "C" int32_t arduboy_app(void* p) {
         const uint32_t frame_before = arduboy.frameCount();
         setup();
         loop();
+        if(g_state->back_long_requested) {
+            g_state->back_long_requested = false;
+            if(can_exit_from_current_state()) g_state->exit_requested = true;
+        }
         const uint32_t frame_after = arduboy.frameCount();
         if(frame_after != frame_before) {
             if(furi_mutex_acquire(g_state->fb_mutex, FuriWaitForever) == FuriStatusOk) {
@@ -211,6 +235,10 @@ extern "C" int32_t arduboy_app(void* p) {
         if(furi_mutex_acquire(g_state->game_mutex, 0) == FuriStatusOk) {
             const uint32_t frame_before = arduboy.frameCount();
             loop();
+            if(g_state->back_long_requested) {
+                g_state->back_long_requested = false;
+                if(can_exit_from_current_state()) g_state->exit_requested = true;
+            }
             const uint32_t frame_after = arduboy.frameCount();
             if(frame_after != frame_before) {
                 if(furi_mutex_acquire(g_state->fb_mutex, 0) == FuriStatusOk) {
