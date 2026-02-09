@@ -113,6 +113,7 @@ void loop() {
 
     if (!arduboy.nextFrame()) return; 
     arduboy.pollButtons();
+    bindRuntimeStacks();
 
     #ifndef SAVE_MEMORY_SOUND
         sound.fillBufferFromFX();

@@ -23,6 +23,12 @@ void game_StartLevel() {
     #ifndef SAVE_MEMORY_OTHER
     fadeEffect.reset();
     #endif
+
+    // Cookie contains serialized entities; rebind runtime stacks at level start.
+    prince.setStack(&princeStack);
+    #ifndef SAVE_MEMORY_ENEMY
+    enemy.setStack(&enemyStack);
+    #endif
     
     prince.setHealth(gamePlay.startOfLevelHealth < 3 ? 3 : gamePlay.startOfLevelHealth);
     prince.setHealthMax(gamePlay.startOfLevelHealthMax);

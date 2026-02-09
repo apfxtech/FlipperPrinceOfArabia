@@ -687,15 +687,28 @@ void saveCookie(bool enableLEDs) {
 
 }
 
+void bindRuntimeStacks() {
+
+    if(prince.getStack() != &princeStack) {
+        prince.setStack(&princeStack);
+    }
+
+    #ifndef SAVE_MEMORY_ENEMY
+    if(enemy.getStack() != &enemyStack) {
+        enemy.setStack(&enemyStack);
+    }
+    #endif
+
+}
+
 void restoreRuntimeAfterLoad() {
 
-    prince.setStack(&princeStack);
+    bindRuntimeStacks();
     prince.clear();
     prince.push(prince.getStance());
     prince.updateLocation(level.getXLocation(), level.getYLocation());
 
     #ifndef SAVE_MEMORY_ENEMY
-    enemy.setStack(&enemyStack);
     enemy.clear();
     if(enemy.getEnemyCount() > 0) {
         enemy.push(enemy.getStance());

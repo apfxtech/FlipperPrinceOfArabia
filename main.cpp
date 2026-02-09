@@ -64,6 +64,7 @@ uint8_t getImageIndexFromStance(uint16_t stance);
 void getStance_Offsets(Direction direction, Point& offset, int16_t stance);
 void processRunningTurn();
 void saveCookie(bool enableLEDs);
+void bindRuntimeStacks();
 void restoreRuntimeAfterLoad();
 void handleBlades();
 void handleBlade_Single(int8_t tileXIdx, int8_t tileYIdx, uint8_t princeLX, uint8_t princeRX);
@@ -107,18 +108,22 @@ typedef struct {
     volatile uint8_t input_state;
     volatile bool exit_requested;
     volatile bool back_long_requested;
+    volatile bool back_long_armed;
+    volatile bool back_short_pulse;
+    GameState last_game_state;
 } FlipperState;
 
 static FlipperState* g_state = NULL;
 
 static bool can_exit_from_current_state() {
     switch(gamePlay.gameState) {
-    case GameState::Game_Init:
-    case GameState::Game:
-    case GameState::Game_StartLevel:
-        return false;
-    default:
+    case GameState::SplashScreen_Init:
+    case GameState::SplashScreen:
+    case GameState::Title_Init:
+    case GameState::Title:
         return true;
+    default:
+        return false;
     }
 }
 
@@ -153,15 +158,17 @@ static void input_events_callback(const void* value, void* ctx) {
         return;
     }
 
-    if(event->type == InputTypePress || event->type == InputTypeRepeat || event->type == InputTypeLong) {
+    if(event->type == InputTypePress || event->type == InputTypeRepeat) {
         state->input_state = (uint8_t)(state->input_state | bit);
     } else if(event->type == InputTypeRelease) {
         state->input_state = (uint8_t)(state->input_state & (uint8_t)~bit);
-    }
-
-    // Return/Back long: request app exit (checked later and allowed only in menu states).
-    if(event->key == InputKeyBack && event->type == InputTypeLong) {
-        state->back_long_requested = true;
+        if(event->key == InputKeyBack) {
+            state->back_long_requested = false;
+        }
+    } else if(event->type == InputTypeLong && event->key == InputKeyBack) {
+        if(can_exit_from_current_state()) {
+            state->back_long_requested = true;
+        }
     }
 }
 
@@ -202,6 +209,9 @@ extern "C" int32_t arduboy_app(void* p) {
 
     g_state->exit_requested = false;
     g_state->back_long_requested = false;
+    g_state->back_long_armed = false;
+    g_state->back_short_pulse = false;
+    g_state->last_game_state = gamePlay.gameState;
     g_state->input_state = 0;
     memset(g_state->screen_buffer, 0x00, FB_SIZE);
     memset(g_state->front_buffer, 0x00, FB_SIZE);
@@ -233,6 +243,15 @@ extern "C" int32_t arduboy_app(void* p) {
         }
         const uint32_t frame_after = arduboy.frameCount();
         if(frame_after != frame_before) {
+            const GameState now_state = gamePlay.gameState;
+            if(now_state != g_state->last_game_state) {
+                g_state->last_game_state = now_state;
+                g_state->input_state = 0;
+                g_state->back_long_requested = false;
+                g_state->back_long_armed = false;
+                g_state->back_short_pulse = false;
+                arduboy.clearButtonState();
+            }
             if(furi_mutex_acquire(g_state->fb_mutex, FuriWaitForever) == FuriStatusOk) {
                 memcpy(g_state->front_buffer, g_state->screen_buffer, FB_SIZE);
                 furi_mutex_release(g_state->fb_mutex);
@@ -253,6 +272,15 @@ extern "C" int32_t arduboy_app(void* p) {
             }
             const uint32_t frame_after = arduboy.frameCount();
             if(frame_after != frame_before) {
+                const GameState now_state = gamePlay.gameState;
+                if(now_state != g_state->last_game_state) {
+                    g_state->last_game_state = now_state;
+                    g_state->input_state = 0;
+                    g_state->back_long_requested = false;
+                    g_state->back_long_armed = false;
+                    g_state->back_short_pulse = false;
+                    arduboy.clearButtonState();
+                }
                 if(furi_mutex_acquire(g_state->fb_mutex, 0) == FuriStatusOk) {
                     memcpy(g_state->front_buffer, g_state->screen_buffer, FB_SIZE);
                     furi_mutex_release(g_state->fb_mutex);
