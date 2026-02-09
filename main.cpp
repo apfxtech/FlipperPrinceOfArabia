@@ -1,6 +1,7 @@
 #include <furi.h>
 #include <gui/gui.h>
 #include <input/input.h>
+#include <notification/notification_messages.h>
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -104,13 +105,13 @@ typedef struct {
 
     FuriPubSub* input_events;
     FuriPubSubSubscription* input_sub;
+    NotificationApp* notifications;
 
     volatile uint8_t input_state;
     volatile bool exit_requested;
     volatile bool back_long_requested;
-    volatile bool back_long_armed;
-    volatile bool back_short_pulse;
     GameState last_game_state;
+    bool backlight_forced;
 } FlipperState;
 
 static FlipperState* g_state = NULL;
@@ -124,6 +125,23 @@ static bool can_exit_from_current_state() {
         return true;
     default:
         return false;
+    }
+}
+
+static bool should_hold_backlight(GameState state) {
+    return (state != GameState::SplashScreen_Init) && (state != GameState::SplashScreen);
+}
+
+static void update_display_policy(FlipperState* state) {
+    if(!state || !state->notifications) return;
+
+    const bool hold = should_hold_backlight(gamePlay.gameState);
+    if(hold && !state->backlight_forced) {
+        notification_message(state->notifications, &sequence_display_backlight_enforce_on);
+        state->backlight_forced = true;
+    } else if(!hold && state->backlight_forced) {
+        notification_message(state->notifications, &sequence_display_backlight_enforce_auto);
+        state->backlight_forced = false;
     }
 }
 
@@ -209,9 +227,9 @@ extern "C" int32_t arduboy_app(void* p) {
 
     g_state->exit_requested = false;
     g_state->back_long_requested = false;
-    g_state->back_long_armed = false;
-    g_state->back_short_pulse = false;
     g_state->last_game_state = gamePlay.gameState;
+    g_state->notifications = NULL;
+    g_state->backlight_forced = false;
     g_state->input_state = 0;
     memset(g_state->screen_buffer, 0x00, FB_SIZE);
     memset(g_state->front_buffer, 0x00, FB_SIZE);
@@ -228,6 +246,7 @@ extern "C" int32_t arduboy_app(void* p) {
     g_state->gui = (Gui*)furi_record_open(RECORD_GUI);
     gui_add_framebuffer_callback(g_state->gui, framebuffer_commit_callback, g_state);
     g_state->canvas = gui_direct_draw_acquire(g_state->gui);
+    g_state->notifications = (NotificationApp*)furi_record_open(RECORD_NOTIFICATION);
 
     g_state->input_events = (FuriPubSub*)furi_record_open(RECORD_INPUT_EVENTS);
     g_state->input_sub =
@@ -237,6 +256,7 @@ extern "C" int32_t arduboy_app(void* p) {
         const uint32_t frame_before = arduboy.frameCount();
         setup();
         loop();
+        update_display_policy(g_state);
         if(g_state->back_long_requested) {
             g_state->back_long_requested = false;
             if(can_exit_from_current_state()) g_state->exit_requested = true;
@@ -248,8 +268,6 @@ extern "C" int32_t arduboy_app(void* p) {
                 g_state->last_game_state = now_state;
                 g_state->input_state = 0;
                 g_state->back_long_requested = false;
-                g_state->back_long_armed = false;
-                g_state->back_short_pulse = false;
                 arduboy.clearButtonState();
             }
             if(furi_mutex_acquire(g_state->fb_mutex, FuriWaitForever) == FuriStatusOk) {
@@ -266,6 +284,7 @@ extern "C" int32_t arduboy_app(void* p) {
         if(furi_mutex_acquire(g_state->game_mutex, 0) == FuriStatusOk) {
             const uint32_t frame_before = arduboy.frameCount();
             loop();
+            update_display_policy(g_state);
             if(g_state->back_long_requested) {
                 g_state->back_long_requested = false;
                 if(can_exit_from_current_state()) g_state->exit_requested = true;
@@ -277,8 +296,6 @@ extern "C" int32_t arduboy_app(void* p) {
                     g_state->last_game_state = now_state;
                     g_state->input_state = 0;
                     g_state->back_long_requested = false;
-                    g_state->back_long_armed = false;
-                    g_state->back_short_pulse = false;
                     arduboy.clearButtonState();
                 }
                 if(furi_mutex_acquire(g_state->fb_mutex, 0) == FuriStatusOk) {
@@ -298,6 +315,14 @@ extern "C" int32_t arduboy_app(void* p) {
     FX::commit();
     FX::end();
     arduboy_tone_sound_system_deinit();
+    if(g_state->notifications) {
+        if(g_state->backlight_forced) {
+            notification_message(g_state->notifications, &sequence_display_backlight_enforce_auto);
+            g_state->backlight_forced = false;
+        }
+        furi_record_close(RECORD_NOTIFICATION);
+        g_state->notifications = NULL;
+    }
 
     if(g_state->input_sub) {
         furi_pubsub_unsubscribe(g_state->input_events, g_state->input_sub);
