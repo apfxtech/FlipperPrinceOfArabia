@@ -22,7 +22,7 @@ using uint24_t = uint32_t;
 #endif
 
 #ifndef ARDUBOY_TONES_TICK_HZ
-#define ARDUBOY_TONES_TICK_HZ 780u
+#define ARDUBOY_TONES_TICK_HZ 1000u
 #endif
 
 #define VOLUME_IN_TONE       0
@@ -109,6 +109,7 @@ static int32_t arduboy_tone_sound_thread_fn(void* /*ctx*/) {
 
         const uint16_t* start = current_pattern;
         const uint16_t* p = current_pattern;
+        uint32_t timeline_ms = furi_get_tick();
 
         while(g_arduboy_sound_thread_running && g_arduboy_audio_enabled) {
             ArduboyToneSoundRequest new_req;
@@ -168,13 +169,25 @@ static int32_t arduboy_tone_sound_thread_fn(void* /*ctx*/) {
 
             uint32_t dur_ms = arduboy_tone_ticks_to_ms(dur_ticks);
             if(dur_ms == 0) dur_ms = 1;
+            const uint32_t note_deadline = timeline_ms + dur_ms;
+            timeline_ms = note_deadline;
 
             if(freq == 0) {
                 furi_hal_speaker_stop();
-                furi_delay_ms(dur_ms);
+                while(g_arduboy_sound_thread_running && g_arduboy_audio_enabled) {
+                    const uint32_t now = furi_get_tick();
+                    if((int32_t)(note_deadline - now) <= 0) break;
+                    const uint32_t remain = note_deadline - now;
+                    furi_delay_ms(remain > 4 ? 4 : remain);
+                }
             } else {
                 furi_hal_speaker_start((float)freq, vol);
-                furi_delay_ms(dur_ms);
+                while(g_arduboy_sound_thread_running && g_arduboy_audio_enabled) {
+                    const uint32_t now = furi_get_tick();
+                    if((int32_t)(note_deadline - now) <= 0) break;
+                    const uint32_t remain = note_deadline - now;
+                    furi_delay_ms(remain > 4 ? 4 : remain);
+                }
                 furi_hal_speaker_stop();
             }
         }
