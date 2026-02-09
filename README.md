@@ -1,10 +1,9 @@
 # FlipperPrinceOfArabia
 
-Inspired by a timeless classic, PPOT presents 'Prince of Arabia'!
+Inspired by a timeless classic, Press-Play-On-Tape presents 'Prince of Arabia'!
 Escape the dungeons and free the princess!
 
-
-This game is only compatible with an *FX* enabled Arduboy.
+![s1](package/distributable/Level1RunThroughX2.gif)
 
 ---
 
