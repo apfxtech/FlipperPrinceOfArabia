@@ -19,5 +19,5 @@ App(
     fap_author="@apfxtech",
     fap_weburl="https://github.com/apfxtech/FlipperPrinceOfArabia.git",
     fap_version="1.0",
-    fap_description="Play the Prince Of Arabia port on your Flipper Zero.",
+    fap_description="Escape the dungeons and free the princess!",
 )
