@@ -5,6 +5,37 @@ static inline size_t fx_min_sz(size_t a, size_t b) { return a < b ? a : b; }
 static inline uint16_t fx_be16(const uint8_t* p) {
     return ((uint16_t)p[0] << 8) | (uint16_t)p[1];
 }
+static inline uint16_t fx_le16(const uint8_t* p) {
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+static inline uint32_t fx_le32(const uint8_t* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+static inline void fx_put_le16(uint8_t* p, uint16_t v) {
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)(v >> 8);
+}
+static inline void fx_put_le32(uint8_t* p, uint32_t v) {
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+    p[2] = (uint8_t)((v >> 16) & 0xFFu);
+    p[3] = (uint8_t)((v >> 24) & 0xFFu);
+}
+static inline uint32_t fx_fnv1a32_update(uint32_t h, const uint8_t* data, size_t len) {
+    static constexpr uint32_t kPrime = 16777619u;
+    for(size_t i = 0; i < len; i++) {
+        h ^= (uint32_t)data[i];
+        h *= kPrime;
+    }
+    return h;
+}
+static inline uint32_t fx_fnv1a32(const uint8_t* data, size_t len) {
+    return fx_fnv1a32_update(2166136261u, data, len);
+}
+static constexpr uint32_t kSaveMagic = 0x56535846u; // "FXSV" (LE)
+static constexpr uint8_t kSaveVersion = 1u;
+static constexpr uint16_t kSaveRecHeaderSize = 16u;
 extern Arduboy2Ext arduboy;
 
 uint16_t FX::programDataPage = 0;
@@ -663,49 +694,149 @@ void FX::eraseSaveBlock(uint16_t) {
 uint8_t FX::loadGameState(uint8_t* gameState, size_t size) {
     if(!gameState || size == 0) return 0;
     if(!save_opened_ || !save_) return 0;
+    if(size > ((size_t)kSaveBlockSize - (size_t)kSaveRecHeaderSize)) return 0;
 
-    uint16_t addr = 0;
-    uint8_t loaded = 0;
+    // New robust record format:
+    // [0..3]  magic "FXSV" LE
+    // [4]     version
+    // [5]     flags (0)
+    // [6..7]  payload size LE16
+    // [8..11] payload FNV1a32 LE
+    // [12..15] sequence LE32
+    uint8_t header[kSaveRecHeaderSize];
+    uint8_t scratch[256];
+    uint32_t off = 0;
+    uint32_t best_off = UINT32_MAX;
+    uint32_t best_seq = 0;
+    uint8_t found_new = 0;
 
-    for(;;) {
-        if((uint32_t)addr + 2u > (uint32_t)kSaveBlockSize) break;
-        uint16_t s = readSaveU16BE_(addr);
-        if(s != (uint16_t)size) break;
+    while((off + kSaveRecHeaderSize) <= (uint32_t)kSaveBlockSize) {
+        if(!fileReadAt_(save_, off, header, sizeof(header))) break;
 
-        uint32_t next = (uint32_t)addr + 2u + (uint32_t)size;
-        if(next > (uint32_t)kSaveBlockSize) break;
+        const uint32_t magic = fx_le32(&header[0]);
+        if(magic == 0xFFFFFFFFu) break; // erased tail
+        if(magic != kSaveMagic) break; // not new-format stream
+        if(header[4] != kSaveVersion) break;
 
-        if(!fileReadAt_(save_, (uint32_t)addr + 2u, gameState, size)) break;
-        loaded = 1;
-        addr = (uint16_t)next;
+        const uint16_t payload_size = fx_le16(&header[6]);
+        const uint32_t payload_hash = fx_le32(&header[8]);
+        const uint32_t seq = fx_le32(&header[12]);
+        if(payload_size == 0) break;
+
+        const uint32_t rec_end = off + (uint32_t)kSaveRecHeaderSize + (uint32_t)payload_size;
+        if(rec_end > (uint32_t)kSaveBlockSize) break;
+
+        uint32_t hash = 2166136261u;
+        uint32_t pos = off + (uint32_t)kSaveRecHeaderSize;
+        uint32_t remain = payload_size;
+        bool ok = true;
+        while(remain) {
+            const uint32_t chunk_u32 = (remain > sizeof(scratch)) ? (uint32_t)sizeof(scratch) : remain;
+            const size_t chunk = (size_t)chunk_u32;
+            if(!fileReadAt_(save_, pos, scratch, chunk)) {
+                ok = false;
+                break;
+            }
+            hash = fx_fnv1a32_update(hash, scratch, chunk);
+            pos += chunk_u32;
+            remain -= chunk_u32;
+        }
+        if(!ok || hash != payload_hash) break; // torn/corrupt record
+
+        if(payload_size == (uint16_t)size) {
+            if(!found_new || seq >= best_seq) {
+                found_new = 1;
+                best_seq = seq;
+                best_off = off;
+            }
+        }
+
+        off = rec_end;
     }
 
-    return loaded;
+    if(found_new) {
+        const uint32_t payload_off = best_off + (uint32_t)kSaveRecHeaderSize;
+        return fileReadAt_(save_, payload_off, gameState, size) ? 1u : 0u;
+    }
+
+    // Legacy fallback: strict validation for repeated [size_be16][payload] ... 0xFFFF tail.
+    uint16_t addr = 0;
+    uint16_t last_payload_addr = 0;
+    uint16_t count = 0;
+    while((uint32_t)addr + 2u <= (uint32_t)kSaveBlockSize) {
+        const uint16_t s = readSaveU16BE_(addr);
+        if(s == 0xFFFFu) break;
+        if(s != (uint16_t)size) return 0;
+
+        const uint32_t payload_off = (uint32_t)addr + 2u;
+        const uint32_t next = payload_off + (uint32_t)size;
+        if(next > (uint32_t)kSaveBlockSize) return 0;
+
+        last_payload_addr = (uint16_t)payload_off;
+        addr = (uint16_t)next;
+        count++;
+    }
+
+    if(count == 0) return 0;
+    return fileReadAt_(save_, (uint32_t)last_payload_addr, gameState, size) ? 1u : 0u;
 }
 
 void FX::saveGameState(const uint8_t* gameState, size_t size) {
     if(!gameState || size == 0) return;
     if(!save_opened_ || !save_) return;
+    if(size > ((size_t)kSaveBlockSize - (size_t)kSaveRecHeaderSize)) return;
 
-    uint16_t addr = 0;
+    uint8_t header[kSaveRecHeaderSize];
+    uint32_t off = 0;
+    uint32_t last_seq = 0;
+    bool saw_new_stream = false;
 
-    for(;;) {
-        if((uint32_t)addr + 2u > (uint32_t)kSaveBlockSize) { addr = 0; break; }
-        uint16_t s = readSaveU16BE_(addr);
-        if(s != (uint16_t)size) break;
+    while((off + kSaveRecHeaderSize) <= (uint32_t)kSaveBlockSize) {
+        if(!fileReadAt_(save_, off, header, sizeof(header))) break;
+        const uint32_t magic = fx_le32(&header[0]);
+        if(magic == 0xFFFFFFFFu) break;
+        if(magic != kSaveMagic) break;
+        if(header[4] != kSaveVersion) break;
 
-        uint32_t next = (uint32_t)addr + 2u + (uint32_t)size;
-        if(next > (uint32_t)kSaveBlockSize) { addr = 0; break; }
-        addr = (uint16_t)next;
+        const uint16_t payload_size = fx_le16(&header[6]);
+        if(payload_size == 0) break;
+        const uint32_t rec_end = off + (uint32_t)kSaveRecHeaderSize + (uint32_t)payload_size;
+        if(rec_end > (uint32_t)kSaveBlockSize) break;
+
+        saw_new_stream = true;
+        last_seq = fx_le32(&header[12]);
+        off = rec_end;
     }
 
-    if(((uint32_t)addr + 2u + (uint32_t)size) > 4094u) {
+    const uint32_t record_size = (uint32_t)kSaveRecHeaderSize + (uint32_t)size;
+    if((off + record_size) > (uint32_t)kSaveBlockSize) {
         eraseSaveBlock(0);
-        addr = 0;
+        off = 0;
+        // after block erase, sequence continues (wrap-safe for practical lifetime)
+    } else if(off == 0 && !saw_new_stream) {
+        // Legacy/garbage block present: reset to new robust format.
+        uint8_t first4[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+        if(fileReadAt_(save_, 0, first4, sizeof(first4)) && fx_le32(first4) != 0xFFFFFFFFu &&
+           fx_le32(first4) != kSaveMagic) {
+            eraseSaveBlock(0);
+            off = 0;
+        }
     }
 
-    writeSaveU16BE_(addr, (uint16_t)size);
-    (void)fileWriteAt_(save_, (uint32_t)addr + 2u, gameState, size);
+    const uint32_t next_seq = last_seq + 1u;
+    const uint32_t hash = fx_fnv1a32(gameState, size);
+
+    memset(header, 0, sizeof(header));
+    fx_put_le32(&header[0], kSaveMagic);
+    header[4] = kSaveVersion;
+    header[5] = 0;
+    fx_put_le16(&header[6], (uint16_t)size);
+    fx_put_le32(&header[8], hash);
+    fx_put_le32(&header[12], next_seq);
+
+    // Write header then payload. Torn writes are rejected by hash on load.
+    if(!fileWriteAt_(save_, off, header, sizeof(header))) return;
+    (void)fileWriteAt_(save_, off + (uint32_t)kSaveRecHeaderSize, gameState, size);
 }
 
 void FX::warmUpData(uint32_t address, size_t length) {

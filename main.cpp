@@ -108,14 +108,7 @@ typedef struct {
     volatile bool back_long_requested;
 } FlipperState;
 
-typedef struct {
-    volatile bool* exit_requested;
-    volatile bool* back_long_requested;
-    Arduboy2Base::InputContext* input_ctx;
-} InputBridge;
-
 static FlipperState* g_state = NULL;
-static InputBridge g_input_bridge = {};
 
 static bool can_exit_from_current_state() {
     switch(gamePlay.gameState) {
@@ -132,22 +125,43 @@ static void input_events_callback(const void* value, void* ctx) {
     if(!value || !ctx) return;
 
     const InputEvent* event = (const InputEvent*)value;
-    InputBridge* bridge = (InputBridge*)ctx;
-    if(!bridge || !bridge->input_ctx) return;
+    FlipperState* state = (FlipperState*)ctx;
+    if(!state) return;
 
-    if(event->key == InputKeyBack && event->type == InputTypeLong) {
-        if(bridge->back_long_requested) {
-            *bridge->back_long_requested = true;
-        }
-        // Keep Back behaving as in-game B even on long press.
-        InputEvent tmp = *event;
-        tmp.type = InputTypeRepeat;
-        Arduboy2Base::FlipperInputCallback(&tmp, bridge->input_ctx);
+    uint8_t bit = 0;
+    switch(event->key) {
+    case InputKeyUp:
+        bit = INPUT_UP;
+        break;
+    case InputKeyDown:
+        bit = INPUT_DOWN;
+        break;
+    case InputKeyLeft:
+        bit = INPUT_LEFT;
+        break;
+    case InputKeyRight:
+        bit = INPUT_RIGHT;
+        break;
+    case InputKeyOk:
+        bit = INPUT_A;
+        break;
+    case InputKeyBack:
+        bit = INPUT_B;
+        break;
+    default:
         return;
     }
 
-    InputEvent tmp = *event;
-    Arduboy2Base::FlipperInputCallback(&tmp, bridge->input_ctx);
+    if(event->type == InputTypePress || event->type == InputTypeRepeat || event->type == InputTypeLong) {
+        state->input_state = (uint8_t)(state->input_state | bit);
+    } else if(event->type == InputTypeRelease) {
+        state->input_state = (uint8_t)(state->input_state & (uint8_t)~bit);
+    }
+
+    // Return/Back long: request app exit (checked later and allowed only in menu states).
+    if(event->key == InputKeyBack && event->type == InputTypeLong) {
+        state->back_long_requested = true;
+    }
 }
 
 static void framebuffer_commit_callback(
@@ -205,11 +219,8 @@ extern "C" int32_t arduboy_app(void* p) {
     g_state->canvas = gui_direct_draw_acquire(g_state->gui);
 
     g_state->input_events = (FuriPubSub*)furi_record_open(RECORD_INPUT_EVENTS);
-    g_input_bridge.exit_requested = &g_state->exit_requested;
-    g_input_bridge.back_long_requested = &g_state->back_long_requested;
-    g_input_bridge.input_ctx = arduboy.inputContext();
     g_state->input_sub =
-        furi_pubsub_subscribe(g_state->input_events, input_events_callback, &g_input_bridge);
+        furi_pubsub_subscribe(g_state->input_events, input_events_callback, g_state);
 
     if(furi_mutex_acquire(g_state->game_mutex, FuriWaitForever) == FuriStatusOk) {
         const uint32_t frame_before = arduboy.frameCount();
