@@ -1260,7 +1260,13 @@ void game() {
 
                                 #ifdef SAVE_TO_FX
 
-                                    FX::loadGameState(cookie);
+                                    if(FX::loadGameState(cookie)) {
+                                        restoreRuntimeAfterLoad();
+
+                                        // Resume play from loaded world state.
+                                        gamePlay.gameState = GameState::Game;
+                                        bCounter = 0;
+                                    }
 
                                 #else
 

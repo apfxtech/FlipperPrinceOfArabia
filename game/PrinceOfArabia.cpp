@@ -76,7 +76,7 @@ void setup() {
   #ifdef SAVE_TO_FX
 
     FX::begin(FX_DATA_PAGE, FX_SAVE_PAGE);
-    FX::loadGameState((uint8_t*)&cookie, sizeof(cookie));
+    const bool hasSave = FX::loadGameState((uint8_t*)&cookie, sizeof(cookie));
 
   #else
 
@@ -89,6 +89,12 @@ void setup() {
 
     #ifndef SAVE_MEMORY_ENEMY
         enemy.setStack(&enemyStack);
+    #endif
+
+    #ifdef SAVE_TO_FX
+    if(hasSave) {
+        restoreRuntimeAfterLoad();
+    }
     #endif
 
     #ifdef SAVE_MEMORY_OTHER

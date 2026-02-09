@@ -64,6 +64,7 @@ uint8_t getImageIndexFromStance(uint16_t stance);
 void getStance_Offsets(Direction direction, Point& offset, int16_t stance);
 void processRunningTurn();
 void saveCookie(bool enableLEDs);
+void restoreRuntimeAfterLoad();
 void handleBlades();
 void handleBlade_Single(int8_t tileXIdx, int8_t tileYIdx, uint8_t princeLX, uint8_t princeRX);
 

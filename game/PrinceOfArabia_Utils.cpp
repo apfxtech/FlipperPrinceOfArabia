@@ -687,6 +687,23 @@ void saveCookie(bool enableLEDs) {
 
 }
 
+void restoreRuntimeAfterLoad() {
+
+    prince.setStack(&princeStack);
+    prince.clear();
+    prince.push(prince.getStance());
+    prince.updateLocation(level.getXLocation(), level.getYLocation());
+
+    #ifndef SAVE_MEMORY_ENEMY
+    enemy.setStack(&enemyStack);
+    enemy.clear();
+    if(enemy.getEnemyCount() > 0) {
+        enemy.push(enemy.getStance());
+    }
+    #endif
+
+}
+
 
 #ifndef SAVE_MEMORY_SOUND
     

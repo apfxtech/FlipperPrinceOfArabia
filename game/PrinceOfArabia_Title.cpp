@@ -186,7 +186,8 @@ void title() {
 
                             #ifdef SAVE_TO_FX
 
-                                FX::loadGameState(cookie);
+                                if(!FX::loadGameState(cookie)) break;
+                                restoreRuntimeAfterLoad();
 
                             #else
 
