@@ -241,6 +241,17 @@ public:
     void display() {
     }
 
+    void display(bool clear) {
+        if(clear) pending_clear_after_present_ = true;
+    }
+
+    void applyDeferredDisplayOps() {
+        if(pending_clear_after_present_) {
+            clear();
+            pending_clear_after_present_ = false;
+        }
+    }
+
     void invert(bool) {
     }
 
@@ -279,6 +290,11 @@ public:
     void drawSolidBitmapData(int16_t x, int16_t y, const uint8_t* data, uint8_t w, uint8_t h) {
         if(!data || !sBuffer) return;
         blitOverwrite_(x, y, data, (int16_t)w, (int16_t)h);
+    }
+
+    void drawSelfMaskedData(int16_t x, int16_t y, const uint8_t* data, uint8_t w, uint8_t h) {
+        if(!data || !sBuffer) return;
+        blitSelfMasked_(x, y, data, (int16_t)w, (int16_t)h);
     }
 
     void drawPlusMask(int16_t x, int16_t y, const uint8_t* plusmask, uint8_t frame) {
@@ -638,6 +654,7 @@ private:
     uint32_t frame_duration_ms_ = 16;
     uint32_t last_frame_ms_ = 0;
     uint32_t frame_count_ = 0;
+    bool pending_clear_after_present_ = false;
 
     uint8_t cur_buttons_ = 0;
     uint8_t prev_buttons_ = 0;

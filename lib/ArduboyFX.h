@@ -18,12 +18,25 @@ struct JedecID {
 class FX {
 public:
     enum DrawMode : uint8_t {
+        dbfWhiteBlack = 0,
+        dbfInvert = 1,
+        dbfBlack = 2,
+        dbfReverseBlack = 3,
+        dbfMasked = 4,
+        dbfFlip = 5,
+        dbfEndFrame = 6,
+        dbfLastFrame = 7,
+
         dbmNormal = 0x00,
-        dbmMasked = 0x10,
-        dbmNormal_end = 0x40,
-        dbmNormal_last = 0x80,
-        dbmMasked_end = 0x50,
-        dbmMasked_last = 0x90,
+        dbmMasked = (1u << dbfMasked),
+        dbmWhite = (1u << dbfWhiteBlack),
+
+        dbmNormal_end = dbmNormal | (1u << dbfEndFrame),
+        dbmNormal_last = dbmNormal | (1u << dbfLastFrame),
+        dbmMasked_end = dbmMasked | (1u << dbfEndFrame),
+        dbmMasked_last = dbmMasked | (1u << dbfLastFrame),
+        dbmWhite_end = dbmWhite | (1u << dbfEndFrame),
+        dbmWhite_last = dbmWhite | (1u << dbfLastFrame),
     };
 
     static uint16_t programDataPage;

@@ -746,10 +746,6 @@ bool FX::drawFrame() {
     static constexpr uint8_t kRecordSize = 9;
     static constexpr uint16_t kMaxRecordsPerFrame = 512;
 
-    // FX frame scripts represent full logical frames.
-    // Clear first to prevent previous frame residue.
-    arduboy.clear();
-
     const uint32_t current_frame_addr = frame_addr_;
     uint32_t cursor = current_frame_addr;
     uint8_t rec[kRecordSize];
@@ -796,77 +792,129 @@ bool FX::drawFrame(uint24_t frame_addr) {
 void FX::drawBitmap(int16_t x, int16_t y, uint24_t bitmap_addr, uint8_t frame, uint8_t mode) {
     uint8_t wh[4] = {0, 0, 0, 0};
     if(!readDataAt_(bitmap_addr, wh, sizeof(wh))) return;
-    const uint16_t w = fx_be16(&wh[0]);
-    const uint16_t h = fx_be16(&wh[2]);
-    if(w == 0 || h == 0 || w > 128 || h > 200) return;
 
-    const uint16_t pages = (h + 7u) >> 3;
-    const uint32_t frame_size = (uint32_t)w * (uint32_t)pages;
-    const bool masked = ((mode & 0x10u) != 0u) || (mode == dbmMasked) ||
-                        (mode == dbmMasked_end) || (mode == dbmMasked_last);
-    const uint32_t bytes_per_frame = frame_size * (masked ? 2u : 1u);
-    if(bytes_per_frame == 0) return;
-    const uint32_t frame_off = (uint32_t)frame * bytes_per_frame;
-    if(frame != 0 && (frame_off / (uint32_t)frame) != bytes_per_frame) return;
-    if(bitmap_addr > UINT32_MAX - 4u) return;
-    const uint32_t base_addr = bitmap_addr + 4u;
-    if(base_addr > UINT32_MAX - frame_off) return;
-    const uint32_t addr = base_addr + frame_off;
+    int16_t width = (int16_t)fx_be16(&wh[0]);
+    int16_t height = (int16_t)fx_be16(&wh[2]);
+    if(width <= 0 || height <= 0) return;
+    if(x + width <= 0 || x >= WIDTH || y + height <= 0 || y >= HEIGHT) return;
 
-    const uint8_t* data_ptr = nullptr;
-
-    // Repeat cache by full object identity (addr + length), independent of object size class.
-    struct RepeatEntry {
-        uint32_t addr;
-        uint16_t len;
-        uint8_t age;
-        uint8_t valid;
-        uint8_t data[6400];
-    };
-    static RepeatEntry repeat_cache[2] = {};
-    static uint8_t repeat_age = 1;
-
-    for(uint8_t i = 0; i < 2; i++) {
-        RepeatEntry& e = repeat_cache[i];
-        if(e.valid && e.addr == addr && e.len == bytes_per_frame) {
-            e.age = repeat_age++;
-            data_ptr = e.data;
-            break;
-        }
-    }
-
-    if(!data_ptr) {
-        // Fastest path when bitmap frame is physically contiguous in current page cache.
-        data_ptr = dataPtrAt_(addr, (size_t)bytes_per_frame);
-    }
-
-    if(!data_ptr) {
-        int8_t victim = 0;
-        if(repeat_cache[0].valid && !repeat_cache[1].valid) {
-            victim = 1;
-        } else if(repeat_cache[0].valid && repeat_cache[1].valid) {
-            victim = (repeat_cache[0].age <= repeat_cache[1].age) ? 0 : 1;
-        }
-
-        RepeatEntry& e = repeat_cache[(uint8_t)victim];
-        if((size_t)bytes_per_frame > sizeof(e.data)) return;
-        if(!readDataAt_(addr, e.data, bytes_per_frame)) return;
-        e.addr = addr;
-        e.len = (uint16_t)bytes_per_frame;
-        e.age = repeat_age++;
-        e.valid = 1;
-        data_ptr = e.data;
-    }
-
-    if(masked) {
-        arduboy.drawPlusMaskData(x, y, data_ptr, (uint8_t)w, (uint8_t)h);
+    int16_t skipleft = 0;
+    uint8_t renderwidth = 0;
+    if(x < 0) {
+        skipleft = -x;
+        renderwidth = (uint8_t)(((width - skipleft) < WIDTH) ? (width - skipleft) : WIDTH);
     } else {
-        arduboy.drawSolidBitmapData(x, y, data_ptr, (uint8_t)w, (uint8_t)h);
+        renderwidth = (uint8_t)(((x + width) > WIDTH) ? (WIDTH - x) : width);
     }
+    if(renderwidth == 0) return;
+
+    int16_t skiptop = 0;
+    int16_t renderheight = 0;
+    if(y < 0) {
+        int16_t skiptop_px = (int16_t)((-y) & ~7);
+        renderheight = (int16_t)(((height - skiptop_px) <= HEIGHT) ? (height - skiptop_px) :
+                                                            (HEIGHT + ((-y) & 7)));
+        skiptop = (int16_t)(skiptop_px >> 3);
+    } else {
+        skiptop = 0;
+        renderheight = (int16_t)(((y + height) > HEIGHT) ? (HEIGHT - y) : height);
+    }
+    if(renderheight <= 0) return;
+
+    const uint16_t rows_per_frame = (uint16_t)((height + 7) >> 3);
+    uint32_t offset = (uint32_t)((uint32_t)frame * (uint32_t)rows_per_frame + (uint32_t)skiptop) *
+                      (uint32_t)width +
+                      (uint32_t)skipleft;
+    if(mode & dbmMasked) {
+        offset += offset;
+        width += width;
+    }
+
+    uint32_t address = bitmap_addr + 4u + offset;
+    int16_t displayrow = (int16_t)((y >> 3) + skiptop);
+    const int16_t base_x = (int16_t)(x + skipleft);
+
+    const uint8_t shift = (uint8_t)(y & 7);
+    const uint8_t yshift = (uint8_t)(1u << shift);
+    const uint8_t lastmask = (uint8_t)((height & 7) ? ((1u << (height & 7)) - 1u) : 0xFFu);
+    uint8_t* const screen = arduboy.getBuffer();
+    if(!screen) return;
+
+    uint8_t rowbuf_local[256];
+    uint8_t* rowbuf = rowbuf_local;
+    size_t rowbuf_cap = sizeof(rowbuf_local);
+
+    while(renderheight > 0) {
+        const uint8_t rowmask = (renderheight < 8) ? lastmask : 0xFFu;
+        const bool extra_row = (yshift != 1u) && (displayrow < ((HEIGHT / 8) - 1));
+        const uint32_t row_bytes = (uint32_t)width;
+
+        if(row_bytes == 0) break;
+        if(row_bytes > rowbuf_cap) {
+            if(rowbuf != rowbuf_local) free(rowbuf);
+            rowbuf = (uint8_t*)malloc((size_t)row_bytes);
+            if(!rowbuf) return;
+            rowbuf_cap = (size_t)row_bytes;
+        }
+        if(!readDataAt_(address, rowbuf, (size_t)row_bytes)) {
+            if(rowbuf != rowbuf_local) free(rowbuf);
+            return;
+        }
+        address += row_bytes;
+
+        uint16_t src = 0;
+        for(uint8_t c = 0; c < renderwidth; c++) {
+            uint8_t bitmapbyte = rowbuf[src++];
+            if(mode & (1u << dbfReverseBlack)) bitmapbyte ^= rowmask;
+
+            uint8_t maskbyte = rowmask;
+            if(mode & (1u << dbfWhiteBlack)) maskbyte = bitmapbyte;
+            if(mode & (1u << dbfBlack)) bitmapbyte = 0;
+
+            const uint16_t bitmap = (uint16_t)bitmapbyte * (uint16_t)yshift;
+
+            if(mode & dbmMasked) {
+                uint8_t tmp = rowbuf[src++];
+                if((mode & (1u << dbfWhiteBlack)) == 0u) maskbyte = tmp;
+            }
+
+            const uint16_t mask = (uint16_t)maskbyte * (uint16_t)yshift;
+            const int16_t sx = (mode & (1u << dbfFlip)) ? (int16_t)(base_x + renderwidth - 1 - c) :
+                                                          (int16_t)(base_x + c);
+            if((uint16_t)sx >= WIDTH) continue;
+
+            if((uint16_t)displayrow < (HEIGHT / 8)) {
+                const uint16_t idx = (uint16_t)(displayrow * WIDTH + sx);
+                uint8_t display = screen[idx];
+                uint8_t pixels = (uint8_t)(bitmap & 0xFFu);
+                if((mode & (1u << dbfInvert)) == 0u) pixels ^= display;
+                pixels &= (uint8_t)(mask & 0xFFu);
+                pixels ^= display;
+                screen[idx] = pixels;
+            }
+
+            if(extra_row) {
+                const int16_t row2 = (int16_t)(displayrow + 1);
+                if((uint16_t)row2 >= (HEIGHT / 8)) continue;
+                const uint16_t idx2 = (uint16_t)(row2 * WIDTH + sx);
+                uint8_t display = screen[idx2];
+                uint8_t pixels = (uint8_t)(bitmap >> 8);
+                if((mode & (1u << dbfInvert)) == 0u) pixels ^= display;
+                pixels &= (uint8_t)(mask >> 8);
+                pixels ^= display;
+                screen[idx2] = pixels;
+            }
+        }
+
+        displayrow++;
+        renderheight -= 8;
+    }
+
+    if(rowbuf != rowbuf_local) free(rowbuf);
 }
 
 void FX::display(bool clear) {
-    UNUSED(clear);
+    arduboy.display(clear);
 }
 
 void FX::enableOLED() {

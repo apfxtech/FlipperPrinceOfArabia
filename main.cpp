@@ -192,11 +192,16 @@ extern "C" int32_t arduboy_app(void* p) {
         furi_pubsub_subscribe(g_state->input_events, input_events_callback, &g_input_bridge);
 
     if(furi_mutex_acquire(g_state->game_mutex, FuriWaitForever) == FuriStatusOk) {
+        const uint32_t frame_before = arduboy.frameCount();
         setup();
         loop();
-        if(furi_mutex_acquire(g_state->fb_mutex, FuriWaitForever) == FuriStatusOk) {
-            memcpy(g_state->front_buffer, g_state->screen_buffer, FB_SIZE);
-            furi_mutex_release(g_state->fb_mutex);
+        const uint32_t frame_after = arduboy.frameCount();
+        if(frame_after != frame_before) {
+            if(furi_mutex_acquire(g_state->fb_mutex, FuriWaitForever) == FuriStatusOk) {
+                memcpy(g_state->front_buffer, g_state->screen_buffer, FB_SIZE);
+                furi_mutex_release(g_state->fb_mutex);
+            }
+            arduboy.applyDeferredDisplayOps();
         }
         furi_mutex_release(g_state->game_mutex);
     }
@@ -204,10 +209,15 @@ extern "C" int32_t arduboy_app(void* p) {
 
     while(!g_state->exit_requested) {
         if(furi_mutex_acquire(g_state->game_mutex, 0) == FuriStatusOk) {
+            const uint32_t frame_before = arduboy.frameCount();
             loop();
-            if(furi_mutex_acquire(g_state->fb_mutex, 0) == FuriStatusOk) {
-                memcpy(g_state->front_buffer, g_state->screen_buffer, FB_SIZE);
-                furi_mutex_release(g_state->fb_mutex);
+            const uint32_t frame_after = arduboy.frameCount();
+            if(frame_after != frame_before) {
+                if(furi_mutex_acquire(g_state->fb_mutex, 0) == FuriStatusOk) {
+                    memcpy(g_state->front_buffer, g_state->screen_buffer, FB_SIZE);
+                    furi_mutex_release(g_state->fb_mutex);
+                }
+                arduboy.applyDeferredDisplayOps();
             }
             furi_mutex_release(g_state->game_mutex);
         }
