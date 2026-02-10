@@ -2,9 +2,10 @@ sourcecode:
   type: git
   location:
     origin: https://github.com/apfxtech/FlipperPrinceOfArabia.git
-    commit_sha: 4a623ece4c8ca8ed2be16fe11d515ca98cff9507
+    commit_sha: 88bcae7ce8537cd07a696bb80516d7ef7a66dfac
 
 short_description: Escape the dungeons and free the princess!
+description: "@APPSTORE.md"
 changelog: "@CHANGELOG.md"
 screenshots:
   - "package/screenshots/1.png"

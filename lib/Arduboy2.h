@@ -109,11 +109,13 @@ public:
     void begin(
         uint8_t* screen_buffer,
         volatile uint8_t* input_state,
+        volatile uint8_t* input_press_latch,
         FuriMutex* game_mutex,
         volatile bool* exit_requested)
     {
         sBuffer = screen_buffer;
         input_state_ = input_state;
+        input_press_latch_ = input_press_latch;
         input_ctx_.input_state = input_state_;
         game_mutex_ = game_mutex;
         exit_requested_ = exit_requested;
@@ -207,6 +209,7 @@ public:
     void pollButtons() {
         prev_buttons_ = cur_buttons_;
         cur_buttons_ = mapInputToArduboyMask_(input_state_ ? *input_state_ : 0);
+        cur_buttons_ |= mapInputToArduboyMask_(consumeInputPressLatch_());
     }
 
     bool pressed(uint8_t mask) const {
@@ -649,7 +652,13 @@ private:
     bool external_timing_ = false;
 
     volatile uint8_t* input_state_ = nullptr;
+    volatile uint8_t* input_press_latch_ = nullptr;
     InputContext input_ctx_{};
+
+    uint8_t consumeInputPressLatch_() {
+        if(!input_press_latch_) return 0;
+        return __atomic_exchange_n((uint8_t*)input_press_latch_, 0, __ATOMIC_RELAXED);
+    }
 
     uint32_t frame_duration_ms_ = 16;
     uint32_t last_frame_ms_ = 0;

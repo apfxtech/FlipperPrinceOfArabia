@@ -26,7 +26,7 @@ FX::Domain FX::domain_ = FX::Domain::Data;
 uint32_t FX::cur_abs_ = 0;
 
 uint32_t FX::page_size_ = 1024;
-uint8_t FX::cache_pages_ = 32;
+uint8_t FX::cache_pages_ = 30;
 
 uint8_t* FX::cache_mem_ = nullptr;
 uint32_t* FX::cache_base_ = nullptr;

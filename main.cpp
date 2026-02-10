@@ -108,6 +108,7 @@ typedef struct {
     NotificationApp* notifications;
 
     volatile uint8_t input_state;
+    volatile uint8_t input_press_latch;
     volatile bool exit_requested;
     volatile bool back_long_requested;
     GameState last_game_state;
@@ -177,9 +178,10 @@ static void input_events_callback(const void* value, void* ctx) {
     }
 
     if(event->type == InputTypePress || event->type == InputTypeRepeat) {
-        state->input_state = (uint8_t)(state->input_state | bit);
+        (void)__atomic_fetch_or((uint8_t*)&state->input_state, bit, __ATOMIC_RELAXED);
+        (void)__atomic_fetch_or((uint8_t*)&state->input_press_latch, bit, __ATOMIC_RELAXED);
     } else if(event->type == InputTypeRelease) {
-        state->input_state = (uint8_t)(state->input_state & (uint8_t)~bit);
+        (void)__atomic_fetch_and((uint8_t*)&state->input_state, (uint8_t)~bit, __ATOMIC_RELAXED);
         if(event->key == InputKeyBack) {
             state->back_long_requested = false;
         }
@@ -231,12 +233,14 @@ extern "C" int32_t arduboy_app(void* p) {
     g_state->notifications = NULL;
     g_state->backlight_forced = false;
     g_state->input_state = 0;
+    g_state->input_press_latch = 0;
     memset(g_state->screen_buffer, 0x00, FB_SIZE);
     memset(g_state->front_buffer, 0x00, FB_SIZE);
 
     arduboy.begin(
         g_state->screen_buffer,
         &g_state->input_state,
+        &g_state->input_press_latch,
         g_state->game_mutex,
         &g_state->exit_requested);
     Sprites::setArduboy(&arduboy);
@@ -244,13 +248,18 @@ extern "C" int32_t arduboy_app(void* p) {
     EEPROM.begin(APP_DATA_PATH("eeprom.bin"));
 
     g_state->gui = (Gui*)furi_record_open(RECORD_GUI);
-    gui_add_framebuffer_callback(g_state->gui, framebuffer_commit_callback, g_state);
-    g_state->canvas = gui_direct_draw_acquire(g_state->gui);
+    if(g_state->gui) {
+        gui_add_framebuffer_callback(g_state->gui, framebuffer_commit_callback, g_state);
+        g_state->canvas = gui_direct_draw_acquire(g_state->gui);
+    }
+
     g_state->notifications = (NotificationApp*)furi_record_open(RECORD_NOTIFICATION);
 
     g_state->input_events = (FuriPubSub*)furi_record_open(RECORD_INPUT_EVENTS);
-    g_state->input_sub =
-        furi_pubsub_subscribe(g_state->input_events, input_events_callback, g_state);
+    if(g_state->input_events) {
+        g_state->input_sub =
+            furi_pubsub_subscribe(g_state->input_events, input_events_callback, g_state);
+    }
 
     if(furi_mutex_acquire(g_state->game_mutex, FuriWaitForever) == FuriStatusOk) {
         const uint32_t frame_before = arduboy.frameCount();
@@ -267,6 +276,7 @@ extern "C" int32_t arduboy_app(void* p) {
             if(now_state != g_state->last_game_state) {
                 g_state->last_game_state = now_state;
                 g_state->input_state = 0;
+                g_state->input_press_latch = 0;
                 g_state->back_long_requested = false;
                 arduboy.clearButtonState();
             }
@@ -295,6 +305,7 @@ extern "C" int32_t arduboy_app(void* p) {
                 if(now_state != g_state->last_game_state) {
                     g_state->last_game_state = now_state;
                     g_state->input_state = 0;
+                    g_state->input_press_latch = 0;
                     g_state->back_long_requested = false;
                     arduboy.clearButtonState();
                 }
